@@ -1,1 +1,493 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoxGuard | Voice Security</title>
+
+<style>
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: #08111f;
+    color: #eaf2ff;
+    min-height: 100vh;
+}
+
+header {
+    padding: 22px 6%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #203149;
+    background: #0c192a;
+}
+
+.brand {
+    font-size: 25px;
+    font-weight: bold;
+    color: #54d6ff;
+}
+
+.brand span {
+    color: white;
+}
+
+.status {
+    color: #ffcc70;
+    font-size: 14px;
+}
+
+main {
+    max-width: 1200px;
+    margin: 30px auto;
+    padding: 0 20px;
+}
+
+.intro {
+    margin-bottom: 25px;
+}
+
+.intro h1 {
+    font-size: 30px;
+    margin-bottom: 8px;
+}
+
+.intro p {
+    color: #91a5bf;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+}
+
+.panel {
+    background: #101f33;
+    border: 1px solid #263b56;
+    border-radius: 14px;
+    padding: 22px;
+    min-width: 0;
+}
+
+.panel h2 {
+    font-size: 18px;
+    margin-bottom: 18px;
+}
+
+.controls {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+button {
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#startBtn {
+    background: #17b8a6;
+    color: #06131b;
+}
+
+#stopBtn {
+    background: #34465e;
+    color: white;
+}
+
+button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+#visualizer {
+    width: 100%;
+    height: 150px;
+    background: #071321;
+    border-radius: 8px;
+    margin-top: 15px;
+}
+
+.metrics {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.metric {
+    background: #0a1728;
+    border-radius: 9px;
+    padding: 15px;
+}
+
+.metric small {
+    color: #91a5bf;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.metric strong {
+    font-size: 22px;
+    color: #54d6ff;
+}
+
+.detection {
+    border-left: 4px solid #e7ad45;
+    background: #202538;
+    padding: 15px;
+    border-radius: 7px;
+    line-height: 1.6;
+}
+
+.alert {
+    color: #ffcf79;
+    line-height: 1.6;
+}
+
+footer {
+    text-align: center;
+    color: #8294ac;
+    padding: 30px;
+    font-size: 13px;
+}
+
+@media(max-width: 700px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    header {
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <div class="brand">🛡 Vox<span>Guard</span></div>
+    <div class="status" id="connectionStatus">
+        ● Disconnected
+    </div>
+</header>
+
+<main>
+
+    <section class="intro">
+        <h1>Real-Time Voice Security</h1>
+        <p>
+            Monitor incoming audio and prepare for AI-powered
+            voice-cloning detection.
+        </p>
+    </section>
+
+    <div class="grid">
+
+        <section class="panel">
+            <h2>🎙 Live Audio Monitor</h2>
+
+            <div class="controls">
+                <button id="startBtn">Start Monitoring</button>
+                <button id="stopBtn" disabled>Stop Monitoring</button>
+            </div>
+
+            <canvas id="visualizer"></canvas>
+
+            <p id="audioStatus" style="margin-top:15px;color:#91a5bf">
+                Waiting for microphone permission...
+            </p>
+        </section>
+
+        <section class="panel">
+            <h2>📊 Audio Signal Analysis</h2>
+
+            <div class="metrics">
+                <div class="metric">
+                    <small>RMS Loudness</small>
+                    <strong id="rms">0.0000</strong>
+                </div>
+
+                <div class="metric">
+                    <small>Peak Amplitude</small>
+                    <strong id="peak">0.0000</strong>
+                </div>
+
+                <div class="metric">
+                    <small>Zero-Crossing Rate</small>
+                    <strong id="zcr">0.0000</strong>
+                </div>
+
+                <div class="metric">
+                    <small>Spectral Centroid</small>
+                    <strong id="centroid">0 Hz</strong>
+                </div>
+            </div>
+
+            <p style="margin-top:15px;color:#91a5bf">
+                Audio chunks received:
+                <strong id="chunks">0</strong>
+            </p>
+        </section>
+
+        <section class="panel">
+            <h2>🧠 AI Detection Engine</h2>
+
+            <div class="detection">
+                <strong>Model status: Not integrated</strong>
+                <p>
+                    Live audio processing is active when streaming.
+                    The trained voice-cloning detection model
+                    is still under development.
+                </p>
+            </div>
+
+            <p style="margin-top:15px;color:#91a5bf">
+                No genuine or cloned voice classification is
+                currently being made.
+            </p>
+        </section>
+
+        <section class="panel">
+            <h2>🚨 Security Alerts</h2>
+
+            <p class="alert" id="alertMessage">
+                No AI-generated alerts yet. Alerts will be
+                enabled after model integration.
+            </p>
+
+            <p style="margin-top:15px;color:#91a5bf">
+                Total audio data received:
+                <strong id="bytes">0 bytes</strong>
+            </p>
+        </section>
+
+    </div>
+
+</main>
+
+<footer>
+    VoxGuard | Trust the voice, verify the source.
+    <br><br>
+    Student prototype – AI detection not yet integrated.
+</footer>
+
+<script>
+let socket = null;
+let audioContext = null;
+let processor = null;
+let microphone = null;
+let source = null;
+let canvasAnimation = null;
+
+const startBtn = document.getElementById("startBtn");
+const stopBtn = document.getElementById("stopBtn");
+const statusText = document.getElementById("connectionStatus");
+const audioStatus = document.getElementById("audioStatus");
+
+const canvas = document.getElementById("visualizer");
+const ctx = canvas.getContext("2d");
+
+function updateStatus(message) {
+    statusText.textContent = "● " + message;
+}
+
+function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + " bytes";
+    if (bytes < 1024 * 1024)
+        return (bytes / 1024).toFixed(2) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+}
+
+function resampleAudio(input, inputRate, outputRate) {
+    if (inputRate === outputRate) {
+        return input;
+    }
+
+    const ratio = inputRate / outputRate;
+    const newLength = Math.floor(input.length / ratio);
+    const output = new Float32Array(newLength);
+
+    for (let i = 0; i < newLength; i++) {
+        const position = i * ratio;
+        const left = Math.floor(position);
+        const right = Math.min(left + 1, input.length - 1);
+        const fraction = position - left;
+
+        output[i] =
+            input[left] * (1 - fraction) +
+            input[right] * fraction;
+    }
+
+    return output;
+}
+
+function convertToPCM(floatSamples) {
+    const pcm = new Int16Array(floatSamples.length);
+
+    for (let i = 0; i < floatSamples.length; i++) {
+        const sample = Math.max(-1, Math.min(1, floatSamples[i]));
+
+        pcm[i] = sample < 0
+            ? sample * 32768
+            : sample * 32767;
+    }
+
+    return pcm;
+}
+
+function drawWaveform(data) {
+    const width = canvas.width;
+    const height = canvas.height;
+
+    ctx.clearRect(0, 0, width, height);
+
+    ctx.strokeStyle = "#54d6ff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+
+    const step = width / data.length;
+
+    for (let i = 0; i < data.length; i++) {
+        const x = i * step;
+        const y = (0.5 - data[i] / 2) * height;
+
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+
+    ctx.stroke();
+}
+
+async function startMonitoring() {
+    try {
+        if (!navigator.mediaDevices ||
+            !navigator.mediaDevices.getUserMedia) {
+            throw new Error(
+                "Microphone access requires localhost or HTTPS."
+            );
+        }
+
+        microphone = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: false,
+                autoGainControl: false
+            }
+        });
+
+        audioContext = new AudioContext({
+            sampleRate: 16000
+        });
+
+        if (audioContext.state === "suspended") {
+            await audioContext.resume();
+        }
+        source = audioContext.createMediaStreamSource(microphone);
+        processor = audioContext.createScriptProcessor(
+            4096, 1, 1
+        );
+        socket = new WebSocket(
+            "ws://" + window.location.host + "/ws/audio"
+        );
+        socket.binaryType = "arraybuffer";
+        socket.onopen = () => {
+            updateStatus("Connected");
+            audioStatus.textContent = "Microphone streaming active";
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            processor.onaudioprocess = (event) => {
+                if (!socket || socket.readyState !== WebSocket.OPEN) {
+                    return;
+                }
+                const input = event.inputBuffer.getChannelData(0);
+                drawWaveform(input);
+                const samples = resampleAudio(
+                    input,
+                    audioContext.sampleRate,
+                    16000
+                );
+                const pcm = convertToPCM(samples);
+                socket.send(pcm.buffer);
+            };
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+        };
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === "audio_metrics") {
+                const m = data.metrics;
+                document.getElementById("rms").textContent = m.rms;
+                document.getElementById("peak").textContent = m.peak;
+                document.getElementById("zcr").textContent =
+                    m.zero_crossing_rate;
+                document.getElementById("centroid").textContent =
+                    m.spectral_centroid + " Hz";
+                document.getElementById("chunks").textContent =
+                    data.total_chunks;
+                document.getElementById("bytes").textContent =
+                    formatBytes(data.total_bytes);
+            }
+        };
+        socket.onerror = () => {
+            audioStatus.textContent = "WebSocket connection error";
+        };
+        socket.onclose = () => {
+            updateStatus("Disconnected");
+        };
+    } catch (error) {
+        alert("Could not start VoxGuard: " + error.message);
+        await stopMonitoring();
+    }
+}
+async function stopMonitoring() {
+    if (processor) {
+        processor.disconnect();
+        processor.onaudioprocess = null;
+        processor = null;
+    }
+    if (source) {
+        source.disconnect();
+        source = null;
+    }
+    if (microphone) {
+        microphone.getTracks().forEach(track => track.stop());
+        microphone = null;
+    }
+    if (socket) {
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.close();
+        }
+        socket = null;
+    }
+    if (audioContext) {
+        await audioContext.close();
+        audioContext = null;
+    }
+    updateStatus("Disconnected");
+    audioStatus.textContent = "Monitoring stopped";
+
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+startBtn.addEventListener("click", startMonitoring);
+stopBtn.addEventListener("click", stopMonitoring);
+</script>
+</body>
+</html>
+
