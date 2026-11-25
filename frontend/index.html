@@ -1,1 +1,292 @@
 
+<script>
+let socket = null;
+let audioContext = null;
+let processor = null;
+let microphone = null;
+let source = null;
+
+const startBtn = document.getElementById("startBtn");
+const stopBtn = document.getElementById("stopBtn");
+const statusText = document.getElementById("connectionStatus");
+const audioStatus = document.getElementById("audioStatus");
+
+const canvas = document.getElementById("visualizer");
+const ctx = canvas.getContext("2d");
+
+function updateStatus(message) {
+    statusText.textContent = "● " + message;
+}
+
+function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + " bytes";
+    if (bytes < 1024 * 1024)
+        return (bytes / 1024).toFixed(2) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+}
+
+// Resample browser audio to 16 kHz
+function resampleAudio(input, inputRate, outputRate) {
+    if (inputRate === outputRate) {
+        return input;
+    }
+
+    const ratio = inputRate / outputRate;
+    const newLength = Math.floor(input.length / ratio);
+    const output = new Float32Array(newLength);
+
+    for (let i = 0; i < newLength; i++) {
+        const position = i * ratio;
+        const left = Math.floor(position);
+        const right = Math.min(left + 1, input.length - 1);
+        const fraction = position - left;
+
+        output[i] =
+            input[left] * (1 - fraction) +
+            input[right] * fraction;
+    }
+
+    return output;
+}
+
+// Convert Float32 audio into 16-bit PCM
+function convertToPCM(samples) {
+    const pcm = new Int16Array(samples.length);
+
+    for (let i = 0; i < samples.length; i++) {
+        const sample = Math.max(-1, Math.min(1, samples[i]));
+
+        pcm[i] = sample < 0
+            ? sample * 32768
+            : sample * 32767;
+    }
+
+    return pcm;
+}
+
+// Draw live waveform
+function drawWaveform(data) {
+    const width = canvas.width;
+    const height = canvas.height;
+
+    ctx.clearRect(0, 0, width, height);
+
+    ctx.strokeStyle = "#54d6ff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+
+    const step = width / data.length;
+
+    for (let i = 0; i < data.length; i++) {
+        const x = i * step;
+        const y = (0.5 - data[i] / 2) * height;
+
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    }
+
+    ctx.stroke();
+}
+
+async function startMonitoring() {
+    try {
+        startBtn.disabled = true;
+        audioStatus.textContent = "Requesting microphone permission...";
+        updateStatus("Connecting");
+
+        // Check microphone availability
+        if (!navigator.mediaDevices ||
+            !navigator.mediaDevices.getUserMedia) {
+            throw new Error(
+                "Microphone access requires HTTPS or localhost."
+            );
+        }
+
+        // Request microphone access
+        microphone = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: false,
+                autoGainControl: false
+            }
+        });
+
+        // Use browser's supported sample rate
+        audioContext = new AudioContext();
+
+        if (audioContext.state === "suspended") {
+            await audioContext.resume();
+        }
+
+        source = audioContext.createMediaStreamSource(microphone);
+
+        processor = audioContext.createScriptProcessor(
+            4096, 1, 1
+        );
+
+        // HTTPS pages require secure WebSocket
+        const wsProtocol =
+            window.location.protocol === "https:"
+                ? "wss://"
+                : "ws://";
+
+        const wsUrl =
+            wsProtocol + window.location.host + "/ws/audio";
+
+        socket = new WebSocket(wsUrl);
+        socket.binaryType = "arraybuffer";
+
+        socket.onopen = () => {
+            updateStatus("Connected");
+            audioStatus.textContent = "Microphone streaming active";
+            stopBtn.disabled = false;
+
+            processor.onaudioprocess = (event) => {
+                if (!socket ||
+                    socket.readyState !== WebSocket.OPEN) {
+                    return;
+                }
+
+                const input =
+                    event.inputBuffer.getChannelData(0);
+
+                // Show live waveform
+                drawWaveform(input);
+
+                // Convert to backend's expected 16 kHz PCM
+                const samples = resampleAudio(
+                    input,
+                    audioContext.sampleRate,
+                    16000
+                );
+
+                const pcm = convertToPCM(samples);
+
+                // Send audio bytes through WebSocket
+                socket.send(pcm.buffer);
+
+                // Prevent microphone audio playback
+                const output =
+                    event.outputBuffer.getChannelData(0);
+
+                output.fill(0);
+            };
+
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+        };
+
+        socket.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+
+                if (data.type === "audio_metrics") {
+                    const m = data.metrics;
+
+                    document.getElementById("rms").textContent =
+                        m.rms ?? "0.0000";
+
+                    document.getElementById("peak").textContent =
+                        m.peak ?? "0.0000";
+
+                    document.getElementById("zcr").textContent =
+                        m.zero_crossing_rate ?? "0.0000";
+
+                    document.getElementById("centroid").textContent =
+                        (m.spectral_centroid ?? 0) + " Hz";
+
+                    document.getElementById("chunks").textContent =
+                        data.total_chunks ?? 0;
+
+                    document.getElementById("bytes").textContent =
+                        formatBytes(data.total_bytes ?? 0);
+                }
+            } catch (error) {
+                console.error("Invalid backend response:", error);
+            }
+        };
+
+        socket.onerror = () => {
+            audioStatus.textContent =
+                "WebSocket connection failed. Check backend and port 8000.";
+            updateStatus("Connection error");
+        };
+
+        socket.onclose = () => {
+            updateStatus("Disconnected");
+            audioStatus.textContent = "Streaming disconnected";
+        };
+
+    } catch (error) {
+        console.error(error);
+
+        audioStatus.textContent = error.message;
+        updateStatus("Error");
+
+        alert("Could not start VoxGuard: " + error.message);
+
+        await stopMonitoring();
+    }
+}
+
+async function stopMonitoring() {
+    // Stop audio processor
+    if (processor) {
+        processor.disconnect();
+        processor.onaudioprocess = null;
+        processor = null;
+    }
+
+    // Disconnect microphone source
+    if (source) {
+        source.disconnect();
+        source = null;
+    }
+
+    // Stop microphone tracks
+    if (microphone) {
+        microphone.getTracks().forEach(track => track.stop());
+        microphone = null;
+    }
+
+    // Close WebSocket
+    if (socket) {
+        const oldSocket = socket;
+        socket = null;
+
+        if (oldSocket.readyState === WebSocket.OPEN ||
+            oldSocket.readyState === WebSocket.CONNECTING) {
+            oldSocket.close();
+        }
+    }
+
+    // Close audio context
+    if (audioContext) {
+        await audioContext.close();
+        audioContext = null;
+    }
+
+    updateStatus("Disconnected");
+    audioStatus.textContent = "Monitoring stopped";
+
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Reset displayed metrics
+    document.getElementById("rms").textContent = "0.0000";
+    document.getElementById("peak").textContent = "0.0000";
+    document.getElementById("zcr").textContent = "0.0000";
+    document.getElementById("centroid").textContent = "0 Hz";
+    document.getElementById("chunks").textContent = "0";
+    document.getElementById("bytes").textContent = "0 bytes";
+}
+
+startBtn.addEventListener("click", startMonitoring);
+stopBtn.addEventListener("click", stopMonitoring);
+</script>
+
